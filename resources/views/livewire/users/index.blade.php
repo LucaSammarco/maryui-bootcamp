@@ -13,26 +13,20 @@ use App\Models\Country;
 
 new class extends Component {
     use Toast;
-
-
-    use WithPagination; // For pagination support
+    use WithPagination;
 
     public string $search = '';
-
     public bool $drawer = false;
-
-     // Create a public property.
     public int $country_id = 0;
 
     public array $sortBy = ['column' => 'name', 'direction' => 'asc'];
 
-    // Clear filters
     public function clear(): void
-{
-    $this->reset();
-    $this->resetPage();
-    $this->success('Filters cleared.', position: 'toast-bottom');
-}
+    {
+        $this->reset();
+        $this->resetPage();
+        $this->success('Filters cleared.', position: 'toast-bottom');
+    }
 
     public function delete(User $user): void
     {
@@ -40,10 +34,10 @@ new class extends Component {
         $this->warning("$user->name deleted", 'Good bye!', position: 'toast-bottom');
     }
 
-    // Table headers
     public function headers(): array
     {
         return [
+            ['key' => 'avatar', 'label' => '', 'class' => 'w-1'],
             ['key' => 'id', 'label' => '#', 'class' => 'w-1'],
             ['key' => 'name', 'label' => 'Name', 'class' => 'w-64'],
             ['key' => 'country_name', 'label' => 'Country', 'class' => 'hidden lg:table-cell'],
@@ -51,20 +45,36 @@ new class extends Component {
         ];
     }
 
-    /**
-     * For demo purpose, this is a static collection.
-     *
-     * On real projects you do it with Eloquent collections.
-     * Please, refer to maryUI docs to see the eloquent examples.
-     */
     public function users(): LengthAwarePaginator
     {
         return User::query()
             ->withAggregate('country', 'name')
             ->when($this->search, fn(Builder $q) => $q->where('name', 'like', "%$this->search%"))
-             ->when($this->country_id, fn(Builder $q) => $q->where('country_id', $this->country_id))
+            ->when($this->country_id, fn(Builder $q) => $q->where('country_id', $this->country_id))
             ->orderBy(...array_values($this->sortBy))
-             ->paginate(5); // No more `->get()`
+            ->paginate(5);
+    }
+
+    public function updated($property): void
+    {
+        if (! is_array($property) && $property != "") {
+            $this->resetPage();
+        }
+    }
+
+    public function activeFiltersCount(): int
+    {
+        $count = 0;
+
+        if ($this->search !== '') {
+            $count++;
+        }
+
+        if ($this->country_id > 0) {
+            $count++;
+        }
+
+        return $count;
     }
 
     public function with(): array
@@ -73,17 +83,12 @@ new class extends Component {
             'users' => $this->users(),
             'headers' => $this->headers(),
             'countries' => Country::all(),
+            'activeFiltersCount' => $this->activeFiltersCount(),
         ];
     }
+};
 
-    // Reset pagination when any component property changes
-public function updated($property): void
-{
-    if (! is_array($property) && $property != "") {
-        $this->resetPage();
-    }
-}
-}; ?>
+?>
 
 <div>
     <!-- HEADER -->
@@ -92,13 +97,18 @@ public function updated($property): void
             <x-input placeholder="Search..." wire:model.live.debounce="search" clearable icon="o-magnifying-glass" />
         </x-slot:middle>
         <x-slot:actions>
-            <x-button label="Filters" @click="$wire.drawer = true" responsive icon="o-funnel" />
+            <x-button label="Filters"  badge="{{ $activeFiltersCount }}" @click="$wire.drawer = true" responsive icon="o-funnel" />
+            <x-button label="Create" link="/users/create" responsive icon="o-plus" class="btn-primary" />
         </x-slot:actions>
     </x-header>
 
     <!-- TABLE  -->
     <x-card shadow>
-        <x-table :headers="$headers" :rows="$users" :sort-by="$sortBy" with-pagination>
+        <x-table :headers="$headers" :rows="$users" :sort-by="$sortBy"  link="users/{id}/edit?name={name}&country={country_name}" with-pagination>
+
+             @scope('cell_avatar', $user)
+        <x-avatar image="{{ $user->avatar ?? '/empty-user.jpg' }}" class="!w-10" />
+             @endscope
             @scope('actions', $user)
             <x-button icon="o-trash" wire:click="delete({{ $user['id'] }})" wire:confirm="Are you sure?" spinner class="btn-ghost btn-sm text-error" />
             @endscope
